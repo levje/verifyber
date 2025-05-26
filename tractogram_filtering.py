@@ -50,10 +50,13 @@ rs = np.random.RandomState(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.benchmark = False
-try:
-    torch.use_deterministic_algorithms(True)
-except:
-    torch.backends.cudnn.deterministic = True
+# There are some operations that are not deterministic in this Pytorch version.
+# Uncommenting this might result in a crash. Commenting it out for now, as reproducibility
+# is not critical.
+# try:
+#     torch.use_deterministic_algorithms(True)
+# except:
+#     torch.backends.cudnn.deterministic = True
 os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' # see https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
 
 
@@ -235,9 +238,10 @@ def get_sample(data):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
+    default_config=os.getenv("VERIFYBER_DEFAULT_CONFIG", f'{script_dir}/run_config.json')
     parser.add_argument('-config',
                         nargs='?',
-                        default=f'{script_dir}/run_config.json',
+                        default=default_config,
                         help='The tag for the configuration file.')
     args = parser.parse_args()
 
@@ -422,7 +426,7 @@ if __name__ == '__main__':
                 hdr = nib.streamlines.load(cfg['trk'], lazy_load=True).header
                 streams, lengths = load_streamlines_fast(cfg['trk'], container='array_flat')
                 streamlines = np.split(streams, np.cumsum(lengths[:-1]))
-                streamlines = np.array(streamlines, dtype=np.object)[idxs_P]
+                streamlines = np.array(streamlines, dtype=object)[idxs_P]
                 out_t = nib.streamlines.Tractogram(streamlines,
                                                    affine_to_rasmm=np.eye(4))
                 out_t_name = osbn(cfg['trk'])[:-4] + '_filtered.trk'
