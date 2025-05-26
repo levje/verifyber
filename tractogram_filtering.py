@@ -40,6 +40,8 @@ from utils.model_utils import get_model
 #     'cuda' if torch.cuda.is_available() else 'cpu')
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+VERIFYBER_DEFAULT_CONFIG = 'VERIFYBER_DEFAULT_CONFIG'
+VERIFYBER_OUTPUT_DIR = 'VERIFYBER_OUTPUT_DIR'
 
 SEED = 10
 
@@ -238,7 +240,7 @@ def get_sample(data):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    default_config=os.getenv("VERIFYBER_DEFAULT_CONFIG", f'{script_dir}/run_config.json')
+    default_config=os.getenv(VERIFYBER_DEFAULT_CONFIG, f'{script_dir}/run_config.json')
     parser.add_argument('-config',
                         nargs='?',
                         default=default_config,
@@ -410,7 +412,12 @@ if __name__ == '__main__':
             prog_bar.close()
 
         ## save predictions
-        out_dir = f'{tmp_dir}/output'
+        out_dir = os.getenv(VERIFYBER_OUTPUT_DIR)
+        if out_dir is not None:
+            print(f'output directory set to {out_dir} (from env var {VERIFYBER_OUTPUT_DIR})')
+        else:
+            out_dir = f'{tmp_dir}/output'
+        
         if not osp.exists(out_dir):
             os.makedirs(out_dir)
 

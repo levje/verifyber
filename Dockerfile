@@ -28,5 +28,6 @@ COPY run_config.json ${CONFIG_PATH}
 
 # User can simply mount this path to the appropriate configuration file on the host machine.
 ENV VERIFYBER_DEFAULT_CONFIG=${CONFIG_PATH}
+ENV VERIFYBER_OUTPUT_DIR=/app/output
 
 ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "verifyber", "python", "tractogram_filtering.py"]
