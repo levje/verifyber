@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+config_file=$1
+out_dir=$2
+container_image=$3
+
+if [ -z ${config_file} ] || [ -z ${out_dir} ]; then
+    echo "Usage: $0 <config_file> <out_dir> [<container_image (default: verifyber_container.sif)>]"
+    exit 1
+fi
+
+if [ ! -f ${config_file} ]; then
+    echo "Config file ${config_file} does not exist."
+    exit 1
+fi
+
+config_file=$(realpath ${config_file})
+out_dir=$(realpath ${out_dir})
+config_dir=$(dirname ${config_file})
+
+container_image=${container_image:-verifyber_container.sif}
+
+echo "=========================================="
+echo "Running Verifyber with Singularity"
+echo " ↳ Container image: ${container_image}"
+echo " ↳ Config file: ${config_file}"
+echo " ↳ Output directory: ${out_dir}"
+echo "=========================================="
+
+# Make sure the output directory exists
+mkdir -p ${out_dir}
+
+singularity run --nv \
+    -B ${config_dir}:/app/config \
+    -B ${out_dir}:/app/output \
+    ${container_image} /app/config/$(basename ${config_file})
+
+echo "=========================================="
+echo "Done. Results are in:"
+echo " ↳ ${out_dir}"
+echo "=========================================="
