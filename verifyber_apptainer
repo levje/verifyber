@@ -3,38 +3,45 @@ set -e
 
 config_file=$1
 out_dir=$2
-container_image=$3
+container_path=$3  # path to the .sif file
 
-if [ -z ${config_file} ] || [ -z ${out_dir} ]; then
-    echo "Usage: $0 <config_file> <out_dir> [<container_image (default: verifyber_container.sif)>]"
+if [ -z "${config_file}" ] || [ -z "${out_dir}" ]; then
+    echo "Usage: $0 <config_file> <out_dir> [<container_path (default: verifyber_container.sif)>]"
     exit 1
 fi
 
-if [ ! -f ${config_file} ]; then
+if [ ! -f "${config_file}" ]; then
     echo "Config file ${config_file} does not exist."
     exit 1
 fi
 
-config_file=$(realpath ${config_file})
-out_dir=$(realpath ${out_dir})
-config_dir=$(dirname ${config_file})
+default_container_config_file="/home/local/USHERBROOKE/levj1404/Documents/verifyber/default_container_config.json"
+config_file=$(realpath "${config_file}")
+container_path=${container_path:-verifyber_container.sif}
 
-container_image=${container_image:-verifyber_container.sif}
+mkdir -p "${out_dir}"
+out_dir=$(realpath "${out_dir}")
+
+trk_file=$(grep '"trk"' "${config_file}" | cut -d '"' -f4)
+t1_file=$(grep '"t1"' "${config_file}" | cut -d '"' -f4)
+fa_file=$(grep '"fa"' "${config_file}" | cut -d '"' -f4)
 
 echo "=========================================="
-echo "Running Verifyber with Singularity"
-echo " ↳ Container image: ${container_image}"
-echo " ↳ Config file: ${config_file}"
+echo "Running Verifyber with Apptainer"
+echo " ↳ Container: ${container_path}"
+echo " ↳ Config file: ${config_file} "
 echo " ↳ Output directory: ${out_dir}"
+echo " ↳ Tractogram_file: ${trk_file}"
+echo " ↳ T1_file: ${t1_file}"
+echo " ↳ FA_file: ${fa_file}"
 echo "=========================================="
 
-# Make sure the output directory exists
-mkdir -p ${out_dir}
-
-singularity run --nv \
-    -B ${config_dir}:/app/config \
-    -B ${out_dir}:/app/output \
-    ${container_image} /app/config/$(basename ${config_file})
+apptainer run \
+    --nv \
+    --bind "${out_dir}:/app/output" \
+    "${container_path}" -config ${config_file}
+    # Optional: add FA file if needed
+    # --bind "${fa_file}:/app/fa.nii.gz:ro"
 
 echo "=========================================="
 echo "Done. Results are in:"

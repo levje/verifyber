@@ -1,0 +1,10 @@
+{
+	"trk": "/app/tractogram.trk",
+	"t1": "/app/t1.nii.gz",
+	"fa": "",
+	"resample_points": true,
+	"task": "classification",
+	"return_trk": true,
+	"warp": "fast",
+	"model": "sdec_extractor"
+}
