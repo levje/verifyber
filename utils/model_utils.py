@@ -4,7 +4,7 @@ import torch
 from models import (DEC, BiLSTM, DECSeq, PN, FINTA)
 
 def get_model(cfg):
-
+    print('Model: %s' % cfg['model'])
     num_classes = int(cfg['n_classes'])
     input_size = int(cfg['data_dim'])
 

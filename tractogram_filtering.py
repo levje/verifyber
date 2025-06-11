@@ -13,6 +13,7 @@ from os import path as osp
 from os.path import basename as osbn
 from time import time
 import random
+import shutil
 
 import ants
 import nibabel as nib
@@ -31,7 +32,7 @@ from datasets import TractDataset
 # from utils.data import selective_loader as sload
 from utils.data.selective_loader_numba import load_streamlines as load_streamlines_fast
 from utils.data.data_utils import (resample_streamlines, slr_with_qbx_partial,
-                                   tck2trk, trk2tck)
+                                   tck2trk, trk2tck, INVALID_STREAMLINE_FLAG)
 from utils.data.transforms import TestSampling
 from utils.general_utils import get_cfg_value
 from utils.model_utils import get_model
@@ -42,6 +43,7 @@ from utils.model_utils import get_model
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 VERIFYBER_DEFAULT_CONFIG = 'VERIFYBER_DEFAULT_CONFIG'
 VERIFYBER_OUTPUT_DIR = 'VERIFYBER_OUTPUT_DIR'
+VERIFYBER_TMP_DIR = 'VERIFYBER_TMP_DIR'
 
 SEED = 10
 
@@ -64,7 +66,8 @@ os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8' # see https://docs.nvidia.com/
 
 
 script_dir = osp.dirname(osp.realpath(__file__))
-tmp_dir = 'tmp_tractogram_filtering'
+tmp_dir = os.getenv('VERIFYBER_TMP_DIR', 'tmp_tractogram_filtering')
+print("Using tmp_dir: ", tmp_dir)
 
 mni_fn_dict = {
     'fa': f'{script_dir}/data/standard/FSL_HCP1065_FA_1mm.nii.gz',
@@ -222,7 +225,7 @@ def tract2standard_img_based(t_fn,
     print('applying warp to tractogram...')
     os.system(
         f'tcktransform {t_fn} {tmp_dir}/mrtrix_warp_cor.nii.gz {t_std_fn} ' +
-        '-force -nthreads 0')
+        '-force')
 
     return t_std_fn
 
@@ -371,41 +374,62 @@ if __name__ == '__main__':
     classifier.eval()
 
     preds = []
-    probas = []
     with torch.no_grad():
         j = 0
         i = 0
         while j < len(dataset):
             t0 = time()
-            print(f'processing subject {j}...')
             consumed = False
             data = dataset[j]
+            total_nb_streamlines = data['obj_full_size']
             obj_pred = np.zeros(data['obj_full_size'])
-            obj_proba = np.zeros(data['obj_full_size'])
-            prog_bar = tqdm(total=len(dataset.remaining[j]))
+            prog_bar = tqdm(total=total_nb_streamlines,
+                            desc=f'Processing subject {j}',
+                            unit='streamlines',
+                            leave=False)
+
+            nb_invalid_found = 0
+            nb_streamlines = 0
+
             while not consumed:
-
                 points = get_sample(data)
-                batch = points.batch
-
                 logits = classifier(points)
-
                 pred = F.log_softmax(logits, dim=-1)
+
+                # Make sure the streamlines that have a value of INVALID_STREAMLINE_FLAG
+                # are not considered for the prediction. It shouldn't happen too often,
+                # but some streamlines can be shortened to a single point after registration.
+                concat_points = data['points'].x.view(-1, 16, 3).cpu().numpy()
+
+                # Find the indices of the streamlines that have a value of
+                # INVALID_STREAMLINE_FLAG at all points.
+                invalid_idxs = np.where(
+                    np.any(concat_points == INVALID_STREAMLINE_FLAG, axis=(1, 2)))[0]
+
                 pred_choice = pred.data.max(1)[1].int()
 
+                # We need to make sure that the invalid streamlines
+                # have a prediction of 0 (non-plausible).
+                if len(invalid_idxs) > 0:
+                    pred_choice[invalid_idxs] = 0
+                    nb_invalid_found += len(invalid_idxs)
+
                 obj_pred[data['obj_idxs']] = pred_choice.cpu().numpy()
-                obj_proba[data['obj_idxs']] = F.softmax(
-                    logits, dim=-1)[:, 0].cpu().numpy()
 
                 prog_bar.update(len(data['obj_idxs']))
+                nb_streamlines += len(data['obj_idxs'])
+                
                 if len(dataset.remaining[j]) == 0:
                     consumed = True
                     break
+
                 data = dataset[j]
                 i += 1
 
+            print(f'Found {nb_invalid_found} invalid streamlines')
+            print(f'Counted {nb_streamlines} total streamlines.')
+            
             preds.append(obj_pred)
-            probas.append(obj_proba)
 
             j += 1
             print(f'done in {time()-t0} sec')
@@ -440,5 +464,17 @@ if __name__ == '__main__':
                 out_t_fn = f'''{out_dir}/{out_t_name}'''
                 nib.streamlines.save(out_t, out_t_fn, header=hdr)
                 print(f'saved {out_t_fn}')
+
+        ## remove temporary files
+        ## as this can conflict with other tractograms of subsequent runs
+        print(f'Cleaning up tmp files')
+        
+        files = glob.glob(f'{tmp_dir}/*')
+        for f in files:
+            if os.path.isfile(f):
+                os.remove(f)
+            elif os.path.isdir(f):
+                shutil.rmtree(f, ignore_errors=True)
+
         print(f'End')
         print(f'Duration: {(time()-t0_global)/60} min')

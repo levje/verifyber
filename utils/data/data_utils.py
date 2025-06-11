@@ -13,6 +13,7 @@ from torchvision import transforms
 
 from .transforms import *
 
+INVALID_STREAMLINE_FLAG = 2147483
 
 def get_dataset(cfg, trans, train=True):
     if not train:
@@ -111,7 +112,15 @@ def get_gbatch_sample(sample, sample_size, same_size, return_name=False):
 def resample_streamlines(streamlines, n_pts=16):
     resampled = []
     for sl in streamlines:
-        resampled.append(set_number_of_points(sl, n_pts))
+        if len(sl) < 2:
+            # As a temporary quick solution, just fill that invalid streamline with a flag
+            # This is not a good solution, but it works for now
+            fixed_sl = np.full((n_pts, 3), INVALID_STREAMLINE_FLAG, dtype=np.float32)
+        else:
+            fixed_sl = set_number_of_points(sl, n_pts)
+        
+        # print(f'Fixed streamline type: {type(fixed_sl)}')
+        resampled.append(fixed_sl)
 
     return resampled
 
